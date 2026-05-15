@@ -1,0 +1,33 @@
+services:
+  # Web Service
+  - type: web
+    name: ethara-backend
+    env: python
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: RENDER_PYTHON_VERSION
+        value: "3.11.9"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ethara-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: FRONTEND_URL
+        value: https://your-frontend-domain.vercel.app
+      - key: ENV
+        value: production
+      - key: DEBUG
+        value: false
+
+  # PostgreSQL Database
+  - type: postgres
+    name: ethara-db
+    plan: free
+    databaseName: ethara
+    user: ethara_user
