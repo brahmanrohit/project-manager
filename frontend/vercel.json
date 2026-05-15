@@ -23,13 +23,5 @@
       "src": "/(.*)",
       "dest": "/index.html"
     }
-  ],
-  "env": {
-    "VITE_API_URL": "https://project-manager-3wtd.onrender.com/api"
-  },
-  "build": {
-    "env": {
-      "VITE_API_URL": "https://project-manager-3wtd.onrender.com/api"
-    }
-  }
+  ]
 }
