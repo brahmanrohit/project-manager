@@ -7,7 +7,7 @@
 | Version | 1.0 |
 | Owner | Sugandh Sharma |
 | Last updated | 18 August 2026 |
-| Branch | `fix/security-hardening` |
+| Branch | `fix/security-hardening`, merged into `main` |
 | Related files | `README.md`, `DEPLOYMENT_GUIDE.md`, `backend/tests/test_security.py` |
 
 ---
@@ -323,7 +323,9 @@ The old code fetched every task the caller could see, then counted the late ones
 
 Three things disagreed. `README.md` said Railway while `DEPLOYMENT_GUIDE.md` said Render and Vercel. Both config files were committed. The guide set the health check to `/api/health` while the code only had `/health`, so the platform would call a URL that returns 404 and mark the service unhealthy.
 
-**Fix so far:** the API now answers on both `/health` and `/api/health`. Still to do: pick one host, delete the other config, and cut the second guide down to a short note.
+There is a fourth. `render.yaml` describes a web service and a `ethara-db` database, and sets a start command that runs migrations. None of it is used, because the live service was created by hand in the dashboard rather than from that file. So the repository holds a deploy description that looks authoritative and controls nothing. Two later problems, D15 and D16, both came from this gap.
+
+**Fix so far:** the API now answers on both `/health` and `/api/health`. Still to do: pick one host, delete the other config, and either adopt `render.yaml` properly or delete it so nobody trusts it.
 
 ### D9. Tokens are kept in browser local storage. Accepted for now
 
@@ -350,6 +352,31 @@ The column said `ON DELETE SET NULL` on `tasks.assigned_to`, while the ORM relat
 ### D14. An expired token left a broken page. Fixed
 
 The router only checked that a token existed, not that it still worked. So an expired token rendered the page and then every call failed with a 401 and no redirect. There is now a response handler that clears the stored login and sends the user to the login page.
+
+### D15. The Python version pin was silently ignored. Fixed
+
+`backend/runtime.txt` is supposed to hold one line naming the Python version. It held two:
+
+```
+python-3.11.9
+git commit -m "Configure production database and Python version"
+```
+
+A shell command had been pasted into the file. The host could not parse it, ignored the file, and fell back to its own newest default, so the service ran on Python 3.14 while every config file in the repository said 3.11.9.
+
+Nothing broke because of it in the end, but it is the kind of drift that produces a bug that cannot be reproduced locally. The versions pinned in D11 were chosen against 3.11.
+
+**Fix:** the file now holds the single line it should.
+
+### D16. Migrations had never run on the server. Fixed
+
+`alembic upgrade head` failed with `ModuleNotFoundError: No module named 'app'`. The cause is that `alembic/env.py` imports `app.config`, but `alembic.ini` was missing `prepend_sys_path`, the setting whose whole job is putting the project on the import path. Run from the console script, nothing added the `backend` directory, so the import failed before a single migration was read.
+
+The reason nobody noticed is D7. While `create_all()` ran at startup, the tables appeared anyway and the deploy looked healthy. Migrations were dead the whole time and the app was quietly building its schema by a route that could never apply a change to an existing table.
+
+Taking `create_all()` out did not cause this. It revealed it.
+
+**Fix:** `prepend_sys_path = .` added to `alembic.ini`. Checked by running the migration until it reached real SQL.
 
 ---
 
@@ -399,7 +426,7 @@ The router only checked that a token existed, not that it still worked. So an ex
 
 ## 12. Plan
 
-**v1.0, done on this branch.** D0 code side, D1, D2, D3, D4, D5, D6, D7, D10, D11, D12, D13, D14, plus seven tests.
+**v1.0, merged into `main`.** D0 code side, D1, D2, D3, D4, D5, D6, D7, D10, D11, D12, D13, D14, D15, D16, plus seven tests.
 
 **Before v1.0 ships, owner action.** Create a new database and set `DATABASE_URL`. Set a fresh `SECRET_KEY`. Decide on repo visibility.
 
