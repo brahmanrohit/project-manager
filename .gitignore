@@ -21,3 +21,4 @@ Thumbs.db
 # Internal documents. Never published: "findable online" disqualifies them.
 PRD.md
 DEFECTS.md
+*.docx
