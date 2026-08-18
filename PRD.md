@@ -5,7 +5,7 @@
 |---|---|
 | Status | Updated after the security fix branch |
 | Version | 1.0 |
-| Author | Rohit Sharma |
+| Owner | Sugandh Sharma |
 | Last updated | 18 August 2026 |
 | Branch | `fix/security-hardening` |
 | Related files | `README.md`, `DEPLOYMENT_GUIDE.md`, `backend/tests/test_security.py` |
