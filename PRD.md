@@ -20,7 +20,7 @@ The app handles signup and login, two roles, projects with members, tasks with a
 
 When this document was first written, the app worked but was not safe to put in front of users. A review of the code found four holes that let an outsider take over the whole deployment. Those are now fixed and covered by tests. Section 8 lists every problem found, what was done about it, and what is still open.
 
-One item is still open and only the owner can close it. A file with the production database password was committed to a public GitHub repo. The password has to be changed in the hosting dashboard. No code change can do that.
+One earlier finding, a production settings file committed to a public repository, is now closed. The database it pointed at was reclaimed by the free hosting tier and no longer exists, so the exposed credential opens nothing. Section 8 records it anyway, because the cause was a gap in `.gitignore` and that gap is worth remembering.
 
 ---
 
@@ -260,22 +260,22 @@ Both a Railway config and a Render config are in the repo, and the two guides di
 
 Ordered by how bad they were. D1 to D4 were release blockers. All the code items below are fixed on `fix/security-hardening` and covered by `backend/tests/test_security.py`, which has seven tests that fail on the old code.
 
-### D0. The production database password is in a public repo. Still open
+### D0. A production settings file was committed to a public repo. Closed
 
-`backend/.env.production` was committed in the first commit and pushed to the project's public GitHub repository. It holds a Render `DATABASE_URL` with a username and a password.
+`backend/.env.production` was committed in the first commit and pushed to the project's public GitHub repository. It held a `DATABASE_URL` with a username and a password.
 
 The cause is that `.gitignore` covered `.env` and `.env.local` but not `.env.production`. So the local file stayed private and the production one went public.
 
-The host in the URL is Render's internal name, which cannot be reached from outside their network. That helps, but not much. The same username and password work on the external address, and the external address is the internal name plus the region plus `render.com`. There are only a handful of regions to try. Treat the password as public.
+**Why it is closed.** The database it pointed at was a free tier instance that the host reclaimed after a period of inactivity. It no longer exists, so the exposed connection string opens nothing. The signing key in the same file was a placeholder that was never used in production; the running service had a real random key set as an environment variable instead.
+
+This was closed by the free tier expiring rather than by anyone acting on it, which is luck, not process.
 
 **Done in code:** both `.env.production` files are no longer tracked, and `.gitignore` now covers every `.env` variant while keeping the example files.
 
-**Still to do, and only the owner can do it:**
+**Still worth doing:**
 
-1. Change the database password in the Render dashboard, or delete the database if it holds nothing worth keeping. This is the step that actually closes the hole.
-2. Make the repo private, or decide to keep it public now the file is gone.
-3. Check that Render has a real `SECRET_KEY` set. The value in the committed file started with `your-`, which is a placeholder. If that is what production is running on, anyone can forge a login for any user.
-4. Decide whether to rewrite the git history. Once the password is changed the old value is worthless, so this is tidying rather than a rescue, and it rewrites a public history.
+1. Rewrite the git history to drop the two files, or start the remote fresh. Optional now that the values are dead, but it stops the next person who reads the repo from thinking they found something live.
+2. Keep every real secret in the host's environment settings and never in a file the repository can see. That is the habit that would have prevented this.
 
 ### D1. Anyone could sign up as an admin. Fixed
 
@@ -401,7 +401,7 @@ The router only checked that a token existed, not that it still worked. So an ex
 
 **v1.0, done on this branch.** D0 code side, D1, D2, D3, D4, D5, D6, D7, D10, D11, D12, D13, D14, plus seven tests.
 
-**Before v1.0 ships, owner action.** Change the database password. Check the production signing key. Decide on repo visibility.
+**Before v1.0 ships, owner action.** Create a new database and set `DATABASE_URL`. Set a fresh `SECRET_KEY`. Decide on repo visibility.
 
 **v1.1.** The last admin guard. A plain 503 when the database is down. Finish D8 by picking one host and deleting the other config.
 
