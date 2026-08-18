@@ -157,3 +157,73 @@ def test_member_directory_is_scoped(client, db_session, make_user, auth_header):
     emails = {u["email"] for u in client.get("/api/users", headers=auth_header("inside@example.com")).json()}
     assert "stranger@example.com" not in emails
     assert "owner2@example.com" in emails
+
+
+def test_unrelated_admin_can_read_but_not_change_tasks(client, db_session, make_user, auth_header):
+    """D17. Read wide, write narrow.
+
+    An admin with no tie to a project keeps the install wide view, which is
+    what the dashboard is for, but must not be able to change another team's
+    work. Before this, they could delete every task in a project they were
+    not allowed to delete.
+    """
+    owner = make_user("lead2@example.com", UserRole.ADMIN)
+    outsider = make_user("outsider2@example.com", UserRole.ADMIN)
+    worker = make_user("hand@example.com")
+
+    project = Project(name="Theirs", description=None, owner_id=owner.id)
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    db_session.add(ProjectMember(user_id=owner.id, project_id=project.id))
+    db_session.add(ProjectMember(user_id=worker.id, project_id=project.id))
+    task = Task(title="Not yours", project_id=project.id, assigned_to=worker.id)
+    db_session.add(task)
+    db_session.commit()
+    db_session.refresh(task)
+
+    headers = auth_header("outsider2@example.com")
+
+    # reading is allowed
+    listed = client.get(f"/api/projects/{project.id}/tasks", headers=headers)
+    assert listed.status_code == 200
+    assert [t["title"] for t in listed.json()] == ["Not yours"]
+
+    # writing is not
+    assert client.post(
+        f"/api/projects/{project.id}/tasks",
+        json={"title": "Injected"},
+        headers=headers,
+    ).status_code == 403
+    assert client.put(
+        f"/api/projects/{project.id}/tasks/{task.id}",
+        json={"title": "Renamed"},
+        headers=headers,
+    ).status_code == 403
+    assert client.delete(
+        f"/api/projects/{project.id}/tasks/{task.id}",
+        headers=headers,
+    ).status_code == 403
+
+    db_session.expire_all()
+    survivor = db_session.query(Task).filter(Task.id == task.id).one()
+    assert survivor.title == "Not yours"
+
+
+def test_admin_on_the_project_can_still_change_tasks(client, db_session, make_user, auth_header):
+    """The narrow write must not lock out the admins who belong there."""
+    owner = make_user("lead3@example.com", UserRole.ADMIN)
+
+    project = Project(name="Mine", description=None, owner_id=owner.id)
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    db_session.add(ProjectMember(user_id=owner.id, project_id=project.id))
+    db_session.commit()
+
+    created = client.post(
+        f"/api/projects/{project.id}/tasks",
+        json={"title": "Mine to make"},
+        headers=auth_header("lead3@example.com"),
+    )
+    assert created.status_code == 201, created.text

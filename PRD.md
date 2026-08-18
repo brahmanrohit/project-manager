@@ -5,7 +5,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.1 |
+| Version | 1.2 |
 | Status | Approved for build. Blocked on setup steps before release |
 | Documentation owner | Sugandh Sharma |
 | Engineering owner | Rohit Sharma |
@@ -19,6 +19,7 @@
 |---|---|
 | 0.9 | First draft. Recorded the system as built and what release would need |
 | 1.0 | Rewritten after the security work. Fifteen defects closed |
+| 1.2 | OQ-6 answered and shipped: task access reads wide and writes narrow. D17 closed, AC-11 added |
 | 1.1 | Split the defect log into `DEFECTS.md`. Added user flows, acceptance criteria, a permission matrix, dependencies and assumptions, and how each measure would actually be taken. Added OQ-6 after the matrix exposed an inconsistency |
 
 ### How to read this
@@ -35,7 +36,7 @@ Ethara is a project and task tracker for small teams that you host yourself. A F
 
 It does five things: signup and login, two roles, projects with members, tasks with a status and a due date, and a dashboard that counts what is late. It deliberately does not do a sixth thing, and section 4.2 lists which sixth things and why.
 
-The build is complete. A review found seventeen defects, sixteen of which are closed and covered by tests. What remains before release is mostly not code. It is four setup steps on the hosting account and two product decisions. Section 15 lists them.
+The build is complete. A review found seventeen defects, all of which are closed and covered by tests. What remains before release is not code. It is four setup steps on the hosting account and one product decision. Section 15 lists them.
 
 ---
 
@@ -212,8 +213,9 @@ A task is late when its due date has passed and its status is not `DONE`. Nothin
 | AC-8 | My token has expired | I call any protected route | I get 401, the stored login is cleared, and the browser returns to login |
 | AC-9 | I am a member | I request the user list | I see only people who share a project with me |
 | AC-10 | The signing key is missing or is a known placeholder | The service starts | Startup fails with a message naming the problem, rather than running insecurely |
+| AC-11 | I am an admin with no tie to a project | I list its tasks, then try to change one | The list succeeds. The change returns 403 and the task is untouched |
 
-AC-1, AC-3, AC-4, AC-6, AC-7, AC-8, AC-9 and AC-10 have tests in `backend/tests/test_security.py`.
+AC-1, AC-3, AC-4, AC-6, AC-7, AC-8, AC-9, AC-10 and AC-11 have tests in `backend/tests/test_security.py`.
 
 ---
 
@@ -231,12 +233,12 @@ Read down a column for what somebody in that position can do. "Off project" mean
 | Rename a project | No | No | No | No | No | Yes |
 | Delete a project | No | No | No | No | No | Yes |
 | Add or remove a member | No | No | No | No | Yes | Yes |
-| List tasks | No | No | Own tasks only | **All tasks** | All tasks | All tasks |
-| Create a task | No | No | Self assigned only | **Yes** | Yes | Yes |
-| Edit or delete a task | No | No | Own tasks only | **Any task** | Any task | Any task |
-| Dashboard | No | Own projects | Own projects | **Everything** | Everything | Everything |
+| List tasks | No | No | Own tasks only | All tasks | All tasks | All tasks |
+| Create a task | No | No | Self assigned only | No | Yes | Yes |
+| Edit or delete a task | No | No | Own tasks only | No | Any task | Any task |
+| Dashboard | No | Own projects | Own projects | Everything | Everything | Everything |
 
-The four bold cells are the subject of OQ-6. An admin with no relationship to a project cannot rename or delete it, but can still read, create, edit and delete every task inside it. Those two rules contradict each other, and clearing a project's tasks is about as damaging as deleting the project. Recorded as D17 in `DEFECTS.md`. It needs a product decision, not just a patch.
+The admin column reads wide and writes narrow, which is the answer to OQ-6. An admin sees every task and the whole dashboard, because that install wide view is the point of section 3.1. Changing anything needs a real tie to the project, ownership or membership, because an admin who is not allowed to delete a project should not be able to empty it one task at a time. Before this, they could. See D17 in `DEFECTS.md`.
 
 ---
 
@@ -403,7 +405,7 @@ The full record is in `DEFECTS.md`. Summary:
 | D9 | Tokens in browser local storage | Accepted for v1.0 |
 | D10 to D14 | A deprecated hook, unpinned dependencies, an unguarded destructive migration, contradictory delete rules, no handling of an expired token | Closed |
 | D15, D16 | A corrupted Python version pin, and migrations that had never once run on the server | Closed |
-| D17 | The project scoping fix was applied to projects but not to tasks | Open, needs OQ-6 |
+| D17 | The project scoping fix was applied to projects but not to tasks | Closed |
 
 D16 is the one worth reading. Migrations failed on every deploy and nobody noticed, because `create_all()` was quietly building the tables by a route that could never apply a change to an existing table. Removing it did not break migrations. It revealed that they had never worked.
 
@@ -413,7 +415,7 @@ D16 is the one worth reading. Migrations failed on every deploy and nobody notic
 
 ### 15.1 Done
 
-Sixteen defects closed. Seven regression tests, fourteen assertions, all passing. Merged to `main` and pushed.
+All seventeen defects closed. Ten regression tests covering sixteen cases, all passing. Merged to `main` and pushed.
 
 ### 15.2 Launch checklist
 
@@ -424,7 +426,7 @@ Sixteen defects closed. Seven regression tests, fourteen assertions, all passing
 | 3 | Set the start command to run `alembic upgrade head` before the server | Engineering | Yes. Nothing else creates the tables |
 | 4 | Confirm `/api/health` returns ok, then sign up a test user | Engineering | Yes |
 | 5 | Decide OQ-3, how the first admin is created | Both | Yes. Signup can no longer produce one |
-| 6 | Decide OQ-6, whether an unrelated admin may act on tasks | Both | Yes |
+| 6 | ~~Decide OQ-6~~ Decided: read wide, write narrow. Shipped | Both | Done |
 | 7 | Set repository visibility deliberately | Engineering | No |
 
 Steps 1 to 4 are hosting setup and need no code. Steps 5 and 6 are product decisions.
@@ -444,9 +446,9 @@ The last admin guard. A plain 503 when the database is unreachable. An `updated_
 | OQ-3 | How is the first admin created, now that signup always produces a member? A seed command, an environment variable, or a manual database change | Engineering | Before release |
 | OQ-4 | Should the free tier row limit be enforced in the app, or just watched? | Engineering | Before real use |
 | OQ-5 | `DEPLOYMENT_GUIDE.md` points at a different repository than the actual remote | Documentation | Before sharing |
-| OQ-6 | Is an admin a superuser for the whole install, or a lead over their own projects? The code currently says the first for tasks and the second for projects | Both | Before release |
+| OQ-6 | ~~Is an admin a superuser for the whole install, or a lead over their own projects?~~ Answered: neither exactly. An admin reads everything and writes only where they have a tie. Shipped with two tests | Both | Closed |
 
-OQ-6 matters most, because section 9.3 shows every "which admin" question traces back to the same choice. Answer it once and D17 follows, along with the shape of any future role work.
+OQ-6 is answered. The rule it set, read wide and write narrow, is the one to apply to any future permission question, because section 9.3 shows they all trace back to the same choice. OQ-3 is now the only release blocker left in this table.
 
 ---
 

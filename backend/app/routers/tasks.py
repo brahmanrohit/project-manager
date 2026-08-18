@@ -3,26 +3,39 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
-from app.models import Project, ProjectMember, Task, TaskStatus, User
+from app.models import Project, ProjectMember, Task, TaskStatus, User, UserRole
 from app.schemas import TaskCreate, TaskOut, TaskUpdate
 
 router = APIRouter(prefix="/projects/{project_id}/tasks", tags=["tasks"])
 
 
-def _ensure_project_access(db: Session, project_id: int, user: User) -> Project:
+def _ensure_project_access(db: Session, project_id: int, user: User, *, write: bool = False) -> Project:
+    """Read wide, write narrow.
+
+    An admin may read any project's tasks, which is what makes the whole
+    install visible on the dashboard. Changing anything needs an actual
+    relationship to the project: ownership or membership. Without that split,
+    an admin who cannot delete a project could still delete every task in it.
+
+    A member always needs membership, for reading and for writing.
+    """
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    if user.role.value == "ADMIN":
-        return project
-
-    member = (
+    is_member = (
         db.query(ProjectMember)
         .filter(ProjectMember.project_id == project_id, ProjectMember.user_id == user.id)
         .first()
+        is not None
     )
-    if not member:
+
+    if user.role == UserRole.ADMIN:
+        if not write or project.owner_id == user.id or is_member:
+            return project
+        raise HTTPException(status_code=403, detail="Not authorized to change this project's tasks")
+
+    if not is_member:
         raise HTTPException(status_code=403, detail="Not authorized for this project")
     return project
 
@@ -44,7 +57,7 @@ def _ensure_assignee_is_member(db: Session, project_id: int, assigned_to: int | 
 def list_tasks(project_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     _ensure_project_access(db, project_id, current_user)
     query = db.query(Task).filter(Task.project_id == project_id)
-    if current_user.role.value != "ADMIN":
+    if current_user.role != UserRole.ADMIN:
         query = query.filter(Task.assigned_to == current_user.id)
     return query.all()
 
@@ -56,7 +69,7 @@ def create_task(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    _ensure_project_access(db, project_id, current_user)
+    _ensure_project_access(db, project_id, current_user, write=True)
     if current_user.role.value != "ADMIN" and payload.assigned_to not in (None, current_user.id):
         raise HTTPException(status_code=403, detail="Members can only assign tasks to themselves")
     _ensure_assignee_is_member(db, project_id, payload.assigned_to)
@@ -82,7 +95,7 @@ def update_task(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    _ensure_project_access(db, project_id, current_user)
+    _ensure_project_access(db, project_id, current_user, write=True)
     task = db.query(Task).filter(Task.id == task_id, Task.project_id == project_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -111,7 +124,7 @@ def delete_task(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    _ensure_project_access(db, project_id, current_user)
+    _ensure_project_access(db, project_id, current_user, write=True)
     task = db.query(Task).filter(Task.id == task_id, Task.project_id == project_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")

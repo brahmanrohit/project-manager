@@ -137,7 +137,7 @@ Taking `create_all()` out did not cause this. It revealed it.
 
 **Fix:** `prepend_sys_path = .` added to `alembic.ini`. Checked by running the migration until it reached real SQL.
 
-### D17. The project scoping fix was incomplete. Open
+### D17. The project scoping fix was incomplete. Fixed
 
 D3 stopped an admin acting on a project they have nothing to do with. That fix
 was applied to `projects.py` only. `tasks.py` still carries the original
