@@ -1,2 +1,1 @@
 python-3.11.9
-git commit -m "🔧 Configure production database and Python version"
