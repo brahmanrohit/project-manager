@@ -1,466 +1,467 @@
 # Ethara Project Management App
 ## Product Requirements Document
 
+### Document control
+
 | Field | Value |
 |---|---|
-| Status | Updated after the security fix branch |
-| Version | 1.0 |
-| Owner | Sugandh Sharma |
+| Version | 1.1 |
+| Status | Approved for build. Blocked on setup steps before release |
+| Documentation owner | Sugandh Sharma |
+| Engineering owner | Rohit Sharma |
 | Last updated | 18 August 2026 |
-| Branch | `fix/security-hardening`, merged into `main` |
-| Related files | `README.md`, `DEPLOYMENT_GUIDE.md`, `backend/tests/test_security.py` |
+| Code | `main`, at the security hardening merge |
+| Companion documents | `DEFECTS.md`, `README.md`, `DEPLOYMENT_GUIDE.md` |
+
+### Revision history
+
+| Version | What changed |
+|---|---|
+| 0.9 | First draft. Recorded the system as built and what release would need |
+| 1.0 | Rewritten after the security work. Fifteen defects closed |
+| 1.1 | Split the defect log into `DEFECTS.md`. Added user flows, acceptance criteria, a permission matrix, dependencies and assumptions, and how each measure would actually be taken. Added OQ-6 after the matrix exposed an inconsistency |
+
+### How to read this
+
+Sections 1 to 7 are the product: what it is for, who uses it, what it must do. Sections 8 to 12 are the build: what exists, what it cost, what breaks. Sections 13 to 17 are release: what has to be true before real users see it.
+
+If you have five minutes, read section 1, the permission matrix in section 7, and the launch checklist in section 15.
 
 ---
 
 ## 1. Summary
 
-Ethara is a project and task tracker for small teams. You host it yourself. The backend is FastAPI with PostgreSQL. The frontend is a React single page app. It runs on one hosting account plus one managed database.
+Ethara is a project and task tracker for small teams that you host yourself. A FastAPI backend with PostgreSQL, a React single page frontend, one managed database, running on a single hosting account.
 
-The app handles signup and login, two roles, projects with members, tasks with a status and a due date, and a dashboard that counts what is late.
+It does five things: signup and login, two roles, projects with members, tasks with a status and a due date, and a dashboard that counts what is late. It deliberately does not do a sixth thing, and section 4.2 lists which sixth things and why.
 
-When this document was first written, the app worked but was not safe to put in front of users. A review of the code found four holes that let an outsider take over the whole deployment. Those are now fixed and covered by tests. Section 8 lists every problem found, what was done about it, and what is still open.
-
-One earlier finding, a production settings file committed to a public repository, is now closed. The database it pointed at was reclaimed by the free hosting tier and no longer exists, so the exposed credential opens nothing. Section 8 records it anyway, because the cause was a gap in `.gitignore` and that gap is worth remembering.
+The build is complete. A review found seventeen defects, sixteen of which are closed and covered by tests. What remains before release is mostly not code. It is four setup steps on the hosting account and two product decisions. Section 15 lists them.
 
 ---
 
 ## 2. The problem
 
-Teams of three to fifteen people need to know who is doing what, and what is late. The usual tools miss for three reasons.
+Teams of three to fifteen people need to know who is doing what, and what is late. The tools available to them miss for three reasons.
 
-**Price does not fit.** Jira, Asana and Linear charge per person. A team of six pays for six seats to track forty tasks. That pricing suits a company where the tool saves salary time. For a small team it is replacing a spreadsheet.
+**The price does not fit the need.** Jira, Asana and Linear charge per person. A team of six pays for six seats to track perhaps forty tasks. That pricing makes sense in a company where the tool saves salary time. For a small team it is competing with a spreadsheet, and a spreadsheet is free.
 
-**Too much setup.** Jira can be shaped to fit anything, which is useful if someone is paid to shape it. Without that person, sprints, epics, custom fields and permission schemes are work you do before you track a single task.
+**The setup costs more than the problem.** Jira can be shaped to fit almost anything, which is a real strength if somebody is paid to shape it. Without that person, sprints, epics, custom fields and permission schemes are all work you do before tracking a single task.
 
-**No control of the data.** With a hosted tool, the vendor holds the data. Some teams work under client terms that make this hard. Self hosting is often only offered on the expensive plans.
+**The data sits with the vendor.** Some teams work under client terms that make a hosted tool awkward, and self hosting is usually only offered on the expensive plans.
 
-Ethara is for the team that has outgrown a shared sheet, where "who owns this" and "what is late" have become questions people ask in chat. The rule that follows from this: a new user must be able to use it within minutes, with no setup.
+Ethara is for the team that has outgrown a shared sheet, where "who owns this" and "what is late" have become questions somebody has to ask in chat, but where a per seat tool is not justified.
+
+One rule follows from this and shapes every decision below: a new user must be able to use it within minutes, with no setup.
 
 ---
 
-## 3. Goals and non goals
+## 3. Who it is for
 
-### 3.1 Goals
+### 3.1 The admin
 
-| ID | Goal | How we check it |
-|---|---|---|
-| G1 | A new user gets to a working board with no setup | Signup to first task in under 3 minutes, no help |
-| G2 | Answer "what is late" without running a query | The overdue count is on the dashboard when it loads |
-| G3 | Runs on one hosting account and one managed database | Two services, about six settings, no server work |
-| G4 | A member cannot act outside their own work | Checked on the server. A hand built request is refused |
-| G5 | The schema can change without losing data | One Alembic migration per change, forward only |
+A team lead or a founder. Creates the projects, decides who is on them, and wants one view across everything. Logs in a few times a day, mostly to check rather than to update. The thing that hurts them is finding out too late that a date has slipped.
 
-### 3.2 Non goals
+They need to create projects, add and remove people, hand out work, see the whole picture in one place, and narrow it to one project or one person.
 
-These were looked at and left out of v1.0. The reason is written down so the choice can be revisited later instead of argued again.
+### 3.2 The member
+
+Somebody doing the work, on one or more projects. Cares about their own list and what is due this week. Logs in, moves a card, leaves.
+
+They need to see their tasks, change a status without asking permission, see due dates, and not be shown work that is not theirs.
+
+### 3.3 A deliberate choice about what a member sees
+
+A member sees only tasks assigned to them, not the whole project board. In `list_tasks`, a caller who is not an admin has the list filtered by `Task.assigned_to == current_user.id`.
+
+This is not what most tools do. It was chosen so the member view has one meaning: this is your list, not a board to scan. It is also the safer default, because opening visibility up later breaks nothing, while closing it down takes something away from people who had it.
+
+The cost is real. A member cannot see whether the task blocking them is finished, and cannot get project context without asking. This is OQ-1, and one real team should settle it before it hardens.
+
+---
+
+## 4. Scope
+
+### 4.1 In scope for v1.0
+
+Accounts and login. Two roles. Projects with an owner and members. Tasks with a title, description, status, due date and assignee. A dashboard with totals, a late count and a breakdown by status. Filters by project and by person.
+
+### 4.2 Out of scope, with reasons
+
+Each of these was considered and left out. The reason is written down so the choice can be revisited later rather than argued again.
 
 | Left out | Why |
 |---|---|
-| Live collaboration, presence, live cursors | This team works over hours, not seconds. Loading fresh data on page load is enough, and it keeps a always on connection layer out of the hosting setup. |
-| File attachments | Brings in file storage, size limits, virus scanning and a second thing to back up. A link to Drive or Dropbox in the task description covers the real need. |
-| Email or push alerts | Needs a mail provider, delivery handling, bounce handling and per person settings. The dashboard covers it for now. Look again if a team says they missed a due date. |
-| Time tracking and billing | A different product for a different buyer. Adding it would pull the roadmap toward agency work. |
-| Gantt charts and task dependencies | Dependencies mean scheduling logic and a critical path. That does not match how this team plans. |
-| Subtasks | Doubles the query work and the permission checks, for something the team can write as two tasks. |
-| Custom status names | `TODO`, `IN_PROGRESS` and `DONE` are fixed on purpose. Custom states are the first step toward the setup cost this product exists to avoid. |
-| Organisations or multi tenant support | You host it yourself, so the install is already the boundary. An org layer would add a column to every table for nobody. |
-| Single sign on | Email and password is fine at this size. SSO matters at the scale where paying per seat is also fine. |
+| Live collaboration, presence, live cursors | This team coordinates over hours, not seconds. Fetching on page load is enough, and it keeps an always on connection layer out of the hosting setup |
+| File attachments | Brings in object storage, size limits, virus scanning and a second thing to back up. A link in the task description covers the real need |
+| Email or push alerts | Needs a mail provider, delivery handling, bounce handling and per person settings. The dashboard is the pull based substitute. Revisit when a team reports missing a due date |
+| Time tracking and billing | A different product for a different buyer. It would pull the roadmap toward agency work |
+| Gantt charts and dependencies | Dependencies imply scheduling logic and a critical path, which does not match how this team plans |
+| Subtasks | Doubles the query work and the permission checks, for something the team can write as two tasks |
+| Custom status names | The three states are fixed on purpose. Custom states are the first step back toward the setup cost this product exists to avoid |
+| Organisations or multi tenancy | You host it yourself, so the install is already the boundary. An org layer would add a column to every table for nobody |
+| Single sign on | Email and password is right at this size. SSO matters at the scale where per seat pricing is also acceptable |
+
+### 4.3 Later, not scheduled
+
+Short lived tokens with a refresh flow. Roles inside a project. Comments on tasks. Search across titles and descriptions. CSV export.
 
 ---
 
-## 4. Who uses it
+## 5. User flows
 
-### 4.1 Admin
+### 5.1 A team lead starts a project
 
-A team lead or founder. Creates projects, picks who is on them, and wants one view across everything. Logs in a few times a day, mostly to check rather than to update. The thing that hurts them is finding out too late that a date slipped.
+1. Signs up. Gets a member account, because signup never grants admin.
+2. Is promoted to admin. See OQ-3: this step has no path in the product yet.
+3. Creates a project. Becomes its owner and its first member in one write.
+4. Adds people to it.
+5. Creates tasks and assigns them to members.
+6. Opens the dashboard and sees the totals.
 
-They need to: create projects, add and remove people, hand out work, see every task in one place, and filter by project or by person.
+### 5.2 A member does their work
 
-### 4.2 Member
+1. Signs up, or is added to a project by an admin.
+2. Logs in and lands on the dashboard.
+3. Sees their own tasks ordered by due date, with undated tasks last.
+4. Opens a project and sees the tasks assigned to them.
+5. Moves one to `IN_PROGRESS`, then later to `DONE`.
 
-Someone doing the work, on one or more projects. Cares about their own list and what is due. Logs in, changes a status, leaves.
+### 5.3 Somebody leaves the team
 
-They need to: see their tasks, change a status without asking, see due dates, and not be shown work that is not theirs.
+1. An admin removes them from the project.
+2. Every task they held on that project becomes unassigned in the same write.
+3. The tasks stay in the project and stay in the counts.
+4. If the account itself is deleted, their tasks survive with no assignee.
 
-### 4.3 A note on what a member can see
+This flow is why `assigned_to` is nullable and set to null on delete rather than cascading. Work history belongs to the team, not to whoever happened to hold it.
 
-Right now a member only sees tasks assigned to them. In `list_tasks`, a caller who is not an admin gets the list filtered by `Task.assigned_to == current_user.id`. So a member on a project cannot see the other tasks on that project.
+### 5.4 What a late task looks like
 
-Most tools do the opposite and show the whole board to anyone on the project. This was chosen so the member view has one meaning: it is your list, not a board to scan. It is also the safer default, because opening it up later breaks nothing, while closing it down later would.
-
-It has a real cost. A member cannot see whether the task blocking them is done, and cannot look up project context on their own. This is open question OQ-1. It should be checked with a real team before it hardens.
-
----
-
-## 5. What is built
-
-### 5.1 Stack
-
-| Layer | Technology |
-|---|---|
-| API | FastAPI, Pydantic v2, SQLAlchemy |
-| Database | PostgreSQL, Alembic migrations |
-| Login | JWT signed with HS256 using PyJWT, passwords hashed with bcrypt |
-| Frontend | React 18 on Vite, TailwindCSS, Zustand, Axios |
-| Hosting | Render for the API, Vercel for the frontend. See D8 |
-
-### 5.2 Data model
-
-Four tables, each with an integer id.
-
-**users**: `id`, `name`, `email` (unique, indexed), `password_hash`, `role` (`ADMIN` or `MEMBER`), `created_at`.
-
-**projects**: `id`, `name`, `description`, `owner_id` pointing at `users.id` with `ON DELETE CASCADE`, `created_at`.
-
-**project_members**: `id`, `user_id`, `project_id`. There is a unique rule on the pair, so the same person cannot be added twice, and an index on the same pair. Membership is yes or no. There is no role inside a project.
-
-**tasks**: `id`, `title`, `description`, `status` (defaults to `TODO`), `due_date` (can be empty), `project_id` with `ON DELETE CASCADE`, `assigned_to` with `ON DELETE SET NULL`, `created_at`. There are two combined indexes, on `(project_id, status)` and on `(assigned_to, due_date)`. Those are the two shapes of query the project page and the dashboard actually run.
-
-Why `assigned_to` can be empty and is set to null on delete: unassigned is a real state, and when someone leaves the team their tasks must stay. `project_id` cannot be empty, because a task with no project means nothing here.
-
-### 5.3 API
-
-| Method | Path | Who can call it |
-|---|---|---|
-| POST | `/api/auth/signup` | Anyone. Always creates a member |
-| POST | `/api/auth/login` | Anyone |
-| GET | `/api/users/me` | Any logged in user |
-| GET | `/api/users` | Admin sees all. A member sees only people on their projects |
-| GET | `/api/projects` | Admin sees all. A member sees their own |
-| POST | `/api/projects` | Admin |
-| PUT | `/api/projects/{id}` | Admin who owns the project |
-| DELETE | `/api/projects/{id}` | Admin who owns the project |
-| POST | `/api/projects/{id}/members` | Admin on that project |
-| DELETE | `/api/projects/{id}/members/{user_id}` | Admin on that project |
-| GET | `/api/projects/{id}/tasks` | Anyone on the project. A member sees only their own tasks |
-| POST | `/api/projects/{id}/tasks` | Anyone on the project. A member can only assign to themselves |
-| PUT | `/api/projects/{id}/tasks/{task_id}` | Admin, or the person it is assigned to |
-| PATCH | `/api/projects/{id}/tasks/{task_id}/status` | Same as PUT. A short way to move a card |
-| DELETE | `/api/projects/{id}/tasks/{task_id}` | Admin, or the person it is assigned to |
-| GET | `/api/dashboard` | Any logged in user. A member only sees their projects |
-| GET | `/health` and `/api/health` | Anyone |
+A task is late when its due date has passed and its status is not `DONE`. Nothing marks it. The dashboard counts it, and the count is on screen when the page loads, which is the whole of goal G2.
 
 ---
 
 ## 6. Requirements
 
-"Done" means it works today. "Open" means it does not, and points at the item in section 8.
+### 6.1 Goals
 
-### 6.1 Login
+| ID | Goal | How we check it |
+|---|---|---|
+| G1 | A new user reaches a working board with no setup | Signup to first task in under 3 minutes, unassisted |
+| G2 | Answer "what is late" without running a query | The count is on the dashboard when it loads |
+| G3 | Runs on one hosting account and one managed database | Two services, about six settings, no server work |
+| G4 | A member cannot act outside their own work | Checked on the server. A hand built request is refused |
+| G5 | The schema can change without losing data | One migration per change, forward only |
+
+### 6.2 Accounts and login
 
 | ID | Requirement | State |
 |---|---|---|
-| FR-1.1 | Signup takes a name, an email and a password. A repeat email gets a 409 | Done |
-| FR-1.2 | Passwords are hashed with bcrypt and a per user salt. Never stored or logged as text | Done |
-| FR-1.3 | Password must be 8 to 128 characters | Done |
-| FR-1.4 | Login returns a token and the user. A failure returns 401 and does not say whether the email or the password was wrong | Done |
-| FR-1.5 | The token holds the user id and an expiry time. It lasts 24 hours | Done |
-| FR-1.6 | Every protected route refuses a missing, broken or expired token with a 401 | Done |
-| FR-1.7 | The caller cannot pick their own role at signup | Done. Was D1 |
-| FR-1.8 | The signing key has no default and the app will not start without a real one | Done. Was D2 |
-
-### 6.2 Permissions
-
-| ID | Requirement | State |
-|---|---|---|
-| FR-2.1 | Two roles, `ADMIN` and `MEMBER`, stored on the user | Done |
-| FR-2.2 | A member only sees projects they are on | Done |
-| FR-2.3 | A member can only change or delete tasks assigned to them | Done |
-| FR-2.4 | A member cannot hand a task to someone else | Done |
-| FR-2.5 | Every check runs on the server. Hiding a button in the UI is a courtesy, not a control | Done |
-| FR-2.6 | Changing or deleting a project needs an admin who owns it | Done. Was D3 |
-| FR-2.7 | The user list is not handed to every member | Done. Was D4 |
+| FR-1.1 | Signup takes a name, an email and a password. A repeat email returns 409 | Met |
+| FR-1.2 | Passwords hashed with bcrypt and a per user salt, never stored or logged as text | Met |
+| FR-1.3 | A password is between 8 and 128 characters | Met |
+| FR-1.4 | Login returns a token and the user. A failure returns 401 without revealing whether the email or the password was wrong | Met |
+| FR-1.5 | The token carries the user id and an expiry, and lasts 24 hours | Met |
+| FR-1.6 | Every protected route refuses a missing, malformed or expired token with 401 | Met |
+| FR-1.7 | The caller cannot choose their own role at signup | Met |
+| FR-1.8 | The signing key has no default and the app will not start without a real one | Met |
 
 ### 6.3 Projects
 
 | ID | Requirement | State |
 |---|---|---|
-| FR-3.1 | An admin creates a project with a name and an optional description | Done |
-| FR-3.2 | The creator is saved as the owner and added as a member in the same write | Done |
-| FR-3.3 | An admin adds a member. A repeat gets 409, an unknown user gets 404 | Done |
-| FR-3.4 | An admin removes a member. Removing someone who is not there gets 404 | Done |
-| FR-3.5 | Deleting a project also deletes its members and tasks | Done |
-| FR-3.6 | Removing a member frees the tasks they held on that project | Done. Was D5 |
+| FR-2.1 | An admin creates a project with a name of 2 to 180 characters and an optional description | Met |
+| FR-2.2 | The creator is recorded as owner and added as a member in the same transaction | Met |
+| FR-2.3 | Adding a member twice returns 409. Adding an unknown user returns 404 | Met |
+| FR-2.4 | Removing somebody who is not a member returns 404 | Met |
+| FR-2.5 | Deleting a project removes its memberships and its tasks | Met |
+| FR-2.6 | Removing a member frees the tasks they held on that project | Met |
 
 ### 6.4 Tasks
 
 | ID | Requirement | State |
 |---|---|---|
-| FR-4.1 | A task has a title, an optional description, a status, an optional due date and an optional owner | Done |
-| FR-4.2 | Status is one of the three values. Anything else gets a 422 | Done |
-| FR-4.3 | Moving a card has its own short call, so the client does not have to send the whole task | Done |
-| FR-4.4 | A partial update only touches the fields that were sent | Done |
-| FR-4.5 | A task is late when the due date has passed and it is not done | Done |
-| FR-4.6 | A task can be left with nobody on it | Done |
-| FR-4.7 | A task can only be given to someone on that project | Done |
+| FR-3.1 | A task has a title of 2 to 180 characters, an optional description, a status, an optional due date and an optional assignee | Met |
+| FR-3.2 | Status is one of three values. Anything else returns 422 | Met |
+| FR-3.3 | Changing status has its own short call, so moving a card does not require sending the whole task | Met |
+| FR-3.4 | A partial update touches only the fields that were sent | Met |
+| FR-3.5 | A task can be left with nobody on it | Met |
+| FR-3.6 | A task can only be assigned to somebody on that project | Met |
 
 ### 6.5 Dashboard
 
 | ID | Requirement | State |
 |---|---|---|
-| FR-5.1 | Returns a total, a late count, and a count per status | Done |
-| FR-5.2 | An admin sees everything. A member sees their projects | Done |
-| FR-5.3 | Can be filtered by project, by person, or both | Done |
-| FR-5.4 | All three status keys are always present, set to zero if empty, so the client needs no fallback | Done |
-| FR-5.5 | The counts are worked out by the database, and the task list comes back one page at a time | Done. Was D6 |
+| FR-4.1 | Returns a total, a late count and a count per status | Met |
+| FR-4.2 | Can be filtered by project, by person, or both | Met |
+| FR-4.3 | All three status keys are always present and zero filled, so the client needs no fallback | Met |
+| FR-4.4 | Counts are computed by the database and the task list is paginated, 50 by default and 200 at most | Met |
+| FR-4.5 | Tasks are ordered by due date, with undated tasks last | Met |
+
+### 6.6 Acceptance criteria
+
+| ID | Given | When | Then |
+|---|---|---|---|
+| AC-1 | I am not logged in | I post a signup with `role` set to `ADMIN` | The account is created as a member and the role field is ignored |
+| AC-2 | I am an admin | I create a project | I am its owner and a member of it, both in one transaction |
+| AC-3 | I am an admin who does not own a project | I try to rename or delete it | I get 403 and the project is unchanged |
+| AC-4 | I am a member of a project | I list its tasks | I see only tasks assigned to me |
+| AC-5 | I am a member | I create a task and assign it to somebody else | I get 403 |
+| AC-6 | I am an admin | I assign a task to somebody not on the project | I get 400 |
+| AC-7 | I am an admin | I remove a member who holds tasks | Their tasks on that project become unassigned and stay in the project |
+| AC-8 | My token has expired | I call any protected route | I get 401, the stored login is cleared, and the browser returns to login |
+| AC-9 | I am a member | I request the user list | I see only people who share a project with me |
+| AC-10 | The signing key is missing or is a known placeholder | The service starts | Startup fails with a message naming the problem, rather than running insecurely |
+
+AC-1, AC-3, AC-4, AC-6, AC-7, AC-8, AC-9 and AC-10 have tests in `backend/tests/test_security.py`.
 
 ---
 
-## 7. Choices and what they cost
+## 7. Permission matrix
 
-Each one says what was picked, what was turned down, and what it costs.
+Read down a column for what somebody in that position can do. "Off project" means an admin with no ownership of and no membership in the project being acted on.
 
-### 7.1 A signed token instead of a server session
+| Action | Anonymous | Member, off | Member, on | Admin, off | Admin, member | Admin, owner |
+|---|---|---|---|---|---|---|
+| Sign up, log in | Yes | Yes | Yes | Yes | Yes | Yes |
+| See own profile | No | Yes | Yes | Yes | Yes | Yes |
+| List users | No | Shared projects only | Shared projects only | Everyone | Everyone | Everyone |
+| List projects | No | Own only | Own only | All | All | All |
+| Create a project | No | No | No | Yes | Yes | Yes |
+| Rename a project | No | No | No | No | No | Yes |
+| Delete a project | No | No | No | No | No | Yes |
+| Add or remove a member | No | No | No | No | Yes | Yes |
+| List tasks | No | No | Own tasks only | **All tasks** | All tasks | All tasks |
+| Create a task | No | No | Self assigned only | **Yes** | Yes | Yes |
+| Edit or delete a task | No | No | Own tasks only | **Any task** | Any task | Any task |
+| Dashboard | No | Own projects | Own projects | **Everything** | Everything | Everything |
 
-**Picked** because the API then holds no state. There is no session store, requests do not have to land on the same server, and a restart does not log everyone out. On a free hosting plan where containers sleep and wake, this matters.
-
-**Turned down:** sessions kept in Postgres or Redis. Redis is a third thing to pay for. A session table adds a read and a write to every single request.
-
-**Cost:** a token cannot be cancelled before it expires. If one is stolen it works for up to a day, and a role change or a deleted account does not take effect until it runs out. This is on the backlog, not in v1.0.
-
-### 7.2 A token that lasts 24 hours
-
-**Picked** so nobody has to log in again during a working day, since there is no refresh flow.
-
-**Turned down:** a short token of about 15 minutes plus a refresh token. That is the better design and it roughly triples the login code, because it brings in rotation, storing the refresh token, and spotting reuse.
-
-**Cost:** the window in 7.1 is a full day instead of a few minutes. This is the weakest choice in the app on purpose, and the first one to revisit if Ethara ever holds real client data.
-
-### 7.3 Two roles for the whole app, not per project
-
-**Picked** because roles inside each project multiply the checks and need a screen to manage them, at a team size where "lead on this one, helper on that one" is usually just understood rather than enforced.
-
-**Turned down:** a role column on `project_members`. That is the more flexible design and would be a small migration.
-
-**Cost:** the model cannot describe a project lead who is not also an app admin. This is also what caused D3. Because the old check only looked at the app wide role, it handed authority over every project. The fix was a per project check, not a new role.
-
-### 7.4 Membership as a plain join table
-
-**Picked** so the database itself refuses a duplicate member, instead of the app trying to remember to check. The combined index also answers "which projects is this person on" directly.
-
-**Cost:** no extra information about the membership, such as when they joined or who added them. That can be added later without touching anything else.
-
-### 7.5 The project id lives in the task URL
-
-Task routes sit under `/api/projects/{project_id}/tasks`, and every handler calls `_ensure_project_access` before it touches anything. So the project check cannot be skipped by accident, and a task id from another project returns 404, because every query filters on both the task id and the project id.
-
-**Turned down:** a flat `/api/tasks/{id}` with the project looked up from the row. Shorter URL, and one more place to forget the check.
-
-### 7.6 Alembic owns the schema
-
-The app used to call `create_all()` at startup as well as having migrations. That was handy for a fresh clone and it caused a real problem, described in D7. Alembic now owns the schema on its own, and `alembic upgrade head` is a required step before the API starts.
-
-### 7.7 Where it is hosted
-
-Both a Railway config and a Render config are in the repo, and the two guides disagree. `README.md` describes Railway. `DEPLOYMENT_GUIDE.md` describes Render for the API and Vercel for the frontend. The move happened for the Vercel build experience and the free Render database. The old files were never cleaned up. See D8.
+The four bold cells are the subject of OQ-6. An admin with no relationship to a project cannot rename or delete it, but can still read, create, edit and delete every task inside it. Those two rules contradict each other, and clearing a project's tasks is about as damaging as deleting the project. Recorded as D17 in `DEFECTS.md`. It needs a product decision, not just a patch.
 
 ---
 
-## 8. Problems found, and what was done
+## 8. What is built
 
-Ordered by how bad they were. D1 to D4 were release blockers. All the code items below are fixed on `fix/security-hardening` and covered by `backend/tests/test_security.py`, which has seven tests that fail on the old code.
+### 8.1 Stack
 
-### D0. A production settings file was committed to a public repo. Closed
+| Layer | Technology |
+|---|---|
+| API | FastAPI, Pydantic v2, SQLAlchemy |
+| Database | PostgreSQL with Alembic migrations |
+| Login | JWT signed with HS256 using PyJWT, passwords hashed with bcrypt |
+| Frontend | React 18 on Vite, TailwindCSS, Zustand, Axios |
+| Hosting | Render for the API, Vercel for the frontend |
+| Python | 3.11.9, pinned in `runtime.txt` |
 
-`backend/.env.production` was committed in the first commit and pushed to the project's public GitHub repository. It held a `DATABASE_URL` with a username and a password.
+### 8.2 Data model
 
-The cause is that `.gitignore` covered `.env` and `.env.local` but not `.env.production`. So the local file stayed private and the production one went public.
+Four tables, each with an integer id.
 
-**Why it is closed.** The database it pointed at was a free tier instance that the host reclaimed after a period of inactivity. It no longer exists, so the exposed connection string opens nothing. The signing key in the same file was a placeholder that was never used in production; the running service had a real random key set as an environment variable instead.
+**users**: `id`, `name`, `email` which is unique and indexed, `password_hash`, `role`, `created_at`.
 
-This was closed by the free tier expiring rather than by anyone acting on it, which is luck, not process.
+**projects**: `id`, `name`, `description`, `owner_id` pointing at `users.id` with `ON DELETE CASCADE`, `created_at`.
 
-**Done in code:** both `.env.production` files are no longer tracked, and `.gitignore` now covers every `.env` variant while keeping the example files.
+**project_members**: `id`, `user_id`, `project_id`. A unique rule on the pair makes a double add impossible in the database rather than in application code, and an index on the same pair answers "which projects is this person on" directly. Membership is yes or no, with no role inside a project.
 
-**Still worth doing:**
+**tasks**: `id`, `title`, `description`, `status` defaulting to `TODO`, `due_date` which may be empty, `project_id` with `ON DELETE CASCADE`, `assigned_to` with `ON DELETE SET NULL`, `created_at`. Two combined indexes, on `(project_id, status)` and on `(assigned_to, due_date)`, which are the two query shapes the project page and the dashboard actually run.
 
-1. Rewrite the git history to drop the two files, or start the remote fresh. Optional now that the values are dead, but it stops the next person who reads the repo from thinking they found something live.
-2. Keep every real secret in the host's environment settings and never in a file the repository can see. That is the habit that would have prevented this.
+`assigned_to` is nullable and set to null on delete because unassigned is a real state, and a departing person must not take the team's history with them. `project_id` is not nullable, because a task with no project means nothing here.
 
-### D1. Anyone could sign up as an admin. Fixed
+### 8.3 API
 
-`UserCreate` had a `role` field, so `role` was part of the signup request. Sending `{"role": "ADMIN"}` to the open signup route returned an admin account and a working token, with no login needed. Together with D3, that gave a stranger full control of every project and task.
+| Method | Path |
+|---|---|
+| POST | `/api/auth/signup`, `/api/auth/login` |
+| GET | `/api/users/me`, `/api/users` |
+| GET, POST | `/api/projects` |
+| PUT, DELETE | `/api/projects/{id}` |
+| POST, DELETE | `/api/projects/{id}/members` |
+| GET, POST | `/api/projects/{id}/tasks` |
+| PUT, PATCH, DELETE | `/api/projects/{id}/tasks/{task_id}` |
+| GET | `/api/dashboard` |
+| GET | `/health`, `/api/health` |
 
-**Fix:** `role` is gone from the signup model, and the route always creates a member. Test: `test_signup_cannot_make_an_admin`.
-
-### D2. The signing key had a working default. Fixed
-
-`config.py` set `secret_key` to `"change-me-in-production"`. The app started and issued real tokens with it. If the setting was missing or misspelled on the server, everything looked fine, and anybody who read the repo could sign a token for any user.
-
-**Fix:** the key is now required. The app refuses to start if it is missing, if it matches a known placeholder, or if it is under 32 characters in production. Test: `test_placeholder_secret_is_refused`.
-
-### D3. Any admin could delete any project. Fixed
-
-The old check only asked whether the role was `ADMIN`. It never asked whether this admin had anything to do with this project. So any admin could rename, delete, or change the membership of any project, and deleting one takes all its tasks with it.
-
-**Fix:** a new `require_project_admin` check. It needs an admin who owns the project, or is a member of it. Renaming and deleting need ownership. Test: `test_admin_cannot_touch_a_project_they_do_not_own`.
-
-### D4. CORS allowed every origin with credentials. Fixed
-
-The API sent `allow_origins=["*"]` together with `allow_credentials=True`. Browsers reject that pair, so the credentialed path failed in a way that is hard to debug, and the `frontend_url` setting that existed for this was never read.
-
-**Fix:** allowed origins now come from `FRONTEND_URL`, with localhost added outside production.
-
-### D5. Removing a member left their tasks stranded. Fixed
-
-Removing someone deleted the membership row and nothing else. Their tasks still pointed at them. They could no longer open the project, so the task sat assigned to somebody who could not see it. It vanished from every view while still counting toward the project totals.
-
-**Fix:** those tasks are set back to unassigned in the same write. Test: `test_removing_a_member_frees_their_tasks`.
-
-### D6. The dashboard read every task into memory. Fixed
-
-The old code fetched every task the caller could see, then counted the late ones and the statuses in a Python loop, and returned every row. No page size, no limit. For an admin on a busy install that was the whole task table on every load.
-
-**Fix:** the counts are SQL aggregates now, and the task list is paged, 50 by default and 200 at most.
-
-### D7. Two things owned the schema. Fixed
-
-`create_all()` ran at every startup while Alembic also owned the schema. The migration is raw SQL and every statement says `IF NOT EXISTS`, which made this worse than untidy. `create_all` built the tables first, then `alembic upgrade head` did nothing and marked the migration as applied. Alembic then believed it had built a database it had never touched, and every later migration would run against a schema it did not know.
-
-**Fix:** the startup call is gone. Alembic owns the schema and `alembic upgrade head` runs before the API starts.
-
-### D8. The deploy guides contradict each other. Partly fixed
-
-Three things disagreed. `README.md` said Railway while `DEPLOYMENT_GUIDE.md` said Render and Vercel. Both config files were committed. The guide set the health check to `/api/health` while the code only had `/health`, so the platform would call a URL that returns 404 and mark the service unhealthy.
-
-There is a fourth. `render.yaml` describes a web service and a `ethara-db` database, and sets a start command that runs migrations. None of it is used, because the live service was created by hand in the dashboard rather than from that file. So the repository holds a deploy description that looks authoritative and controls nothing. Two later problems, D15 and D16, both came from this gap.
-
-**Fix so far:** the API now answers on both `/health` and `/api/health`. Still to do: pick one host, delete the other config, and either adopt `render.yaml` properly or delete it so nobody trusts it.
-
-### D9. Tokens are kept in browser local storage. Accepted for now
-
-The token sits in `localStorage`, which any script on the page can read. So a script injection bug would become a full account takeover. The alternative, an httpOnly cookie, needs CSRF protection and a cross site cookie policy across two different domains. Left as is for v1.0, because the app does not render any user supplied HTML. Revisit if that changes.
-
-### D10. Old startup hook. Fixed
-
-`@app.on_event("startup")` is deprecated. It went away with D7.
-
-### D11. Nothing was pinned. Fixed
-
-Every line in `requirements.txt` was a `>=` with no upper limit and no lock file, so two deploys a month apart could install different versions. The one that mattered was the login library. `python-jose` is not maintained and has known advisories about algorithm confusion and a token that expands to exhaust memory.
-
-**Fix:** moved to PyJWT and pinned every version.
-
-### D12. The migration could drop every table. Fixed
-
-`downgrade()` dropped all four tables with no guard. One command in the wrong shell and the data is gone. It now refuses to run unless `ALLOW_DESTRUCTIVE_DOWNGRADE=1` is set.
-
-### D13. Delete rules disagreed with each other. Fixed
-
-The column said `ON DELETE SET NULL` on `tasks.assigned_to`, while the ORM relationship said `cascade="all, delete"`. So deleting a user through the ORM destroyed their tasks, and deleting the same user in SQL kept them. The ORM cascade is gone. A person leaving must not take the team's history with them.
-
-### D14. An expired token left a broken page. Fixed
-
-The router only checked that a token existed, not that it still worked. So an expired token rendered the page and then every call failed with a 401 and no redirect. There is now a response handler that clears the stored login and sends the user to the login page.
-
-### D15. The Python version pin was silently ignored. Fixed
-
-`backend/runtime.txt` is supposed to hold one line naming the Python version. It held two:
-
-```
-python-3.11.9
-git commit -m "Configure production database and Python version"
-```
-
-A shell command had been pasted into the file. The host could not parse it, ignored the file, and fell back to its own newest default, so the service ran on Python 3.14 while every config file in the repository said 3.11.9.
-
-Nothing broke because of it in the end, but it is the kind of drift that produces a bug that cannot be reproduced locally. The versions pinned in D11 were chosen against 3.11.
-
-**Fix:** the file now holds the single line it should.
-
-### D16. Migrations had never run on the server. Fixed
-
-`alembic upgrade head` failed with `ModuleNotFoundError: No module named 'app'`. The cause is that `alembic/env.py` imports `app.config`, but `alembic.ini` was missing `prepend_sys_path`, the setting whose whole job is putting the project on the import path. Run from the console script, nothing added the `backend` directory, so the import failed before a single migration was read.
-
-The reason nobody noticed is D7. While `create_all()` ran at startup, the tables appeared anyway and the deploy looked healthy. Migrations were dead the whole time and the app was quietly building its schema by a route that could never apply a change to an existing table.
-
-Taking `create_all()` out did not cause this. It revealed it.
-
-**Fix:** `prepend_sys_path = .` added to `alembic.ini`. Checked by running the migration until it reached real SQL.
+Task routes are nested under their project, and every handler checks project access before touching anything. The check therefore cannot be skipped by accident, and a task id from another project returns 404, because every query filters on both the task id and the project id.
 
 ---
 
-## 9. Edge cases
+## 9. Decisions and what they cost
 
-| Case | What happens now | What should happen |
+### 9.1 A signed token instead of a server session
+
+**Chosen** because the API then holds no state. No session store, no need for a request to reach the same server twice, and a restart does not log everybody out. On a free hosting plan where containers sleep and wake, that matters more than it would on a machine that stays up.
+
+**Turned down:** sessions in Postgres or Redis. Redis is a third thing to pay for, and a session table adds a read and a write to every request.
+
+**Cost:** a token cannot be cancelled before it expires. A stolen one works for up to a day, and a role change or a deleted account does not take effect until it runs out.
+
+### 9.2 A token that lasts 24 hours
+
+**Chosen** so nobody logs in twice in a working day, since there is no refresh flow.
+
+**Turned down:** a fifteen minute token with a refresh token. That is the better design and it roughly triples the login code, because it brings in rotation, storage and reuse detection.
+
+**Cost:** the window in 9.1 is a day rather than minutes. This is the weakest deliberate choice in the system and the first to revisit if Ethara ever holds real client data.
+
+### 9.3 Two roles for the whole app, not roles inside a project
+
+**Chosen** because per project roles multiply the checks and need a screen to manage them, at a size where "lead on this one, helper on that one" is usually understood rather than enforced.
+
+**Turned down:** a role column on `project_members`, which is more flexible and would be a small migration.
+
+**Cost:** the model cannot describe a project lead who is not also an app admin. This produced D3, and it is what OQ-6 is still arguing about. Every question of the form "which admin" traces back to this one choice.
+
+### 9.4 Alembic owns the schema on its own
+
+The app used to call `create_all()` at startup as well as having migrations. That was convenient for a fresh clone and it hid a real problem for months. See D7 and D16 in `DEFECTS.md`.
+
+**Cost:** `alembic upgrade head` is now a required part of the start command. Forgetting it means a running API with no tables.
+
+---
+
+## 10. Edge cases
+
+| Case | Behaviour today | Wanted |
 |---|---|---|
-| The last admin is deleted or demoted | Not guarded. The install can end up with no admin and no way to make one from the UI | Refuse the change when it would remove the final admin |
-| Two people edit the same task at once | The last write wins, quietly. Partial updates narrow the overlap but do not remove it | Fine for this team size. Add a check on a last changed timestamp if anyone reports losing an edit |
-| A task is given to someone not on the project | Refused with a 400 | Fixed |
-| A user with tasks is deleted | Their tasks stay and go back to unassigned | Fixed |
-| A task is created with a due date in the past | Accepted and immediately late | Correct. Writing down a task you already missed is normal |
-| The database is unreachable | An unhandled error becomes a 500, and with debug on it shows a stack trace | Keep `DEBUG=false` in production. Add a handler that returns a plain 503 |
-| The token expires while someone is working | They are sent back to the login page | Fixed |
-| Someone signs up with an email already in use | 409 with a clear message | Correct |
-| A member creates a task for themselves | Allowed | On purpose. Written here so it is not mistaken for a hole |
+| The last admin is deleted or demoted | Not guarded. The install can reach a state with no admin and no way to make one | Refuse the change when it would remove the final admin |
+| Two people edit one task at once | Last write wins, quietly. Partial updates narrow the overlap without removing it | Acceptable at this size. Add a check on a last changed timestamp if anyone reports a lost edit |
+| A task is assigned to somebody off the project | Refused with 400 | Correct |
+| A user with tasks is deleted | Tasks stay and become unassigned | Correct |
+| A task is created already past its due date | Accepted and immediately late | Correct. Recording a task you already missed is normal |
+| The database is unreachable | An unhandled error becomes a 500 | Return a plain 503. Scheduled for v1.1 |
+| A token expires mid session | The stored login is cleared and the browser returns to login | Correct |
+| A duplicate email signs up | 409 with a clear message | Correct |
+| A member creates a task for themselves | Allowed | Intended. Recorded here so it is not mistaken for a hole |
 
 ---
 
-## 10. Other requirements
+## 11. Other requirements
 
 | ID | Requirement | Target |
 |---|---|---|
-| NFR-1 | Dashboard speed | Under 500 ms for 95 out of 100 loads at 1,000 tasks |
-| NFR-2 | People using it at once | 50 without slowing down. Not designed past that |
+| NFR-1 | Dashboard speed | Under 500 ms for 95 loads in 100, at 1,000 tasks |
+| NFR-2 | People using it at once | 50 without slowing down. Not designed beyond that |
 | NFR-3 | Password storage | bcrypt with a per user salt |
 | NFR-4 | Traffic | HTTPS only in production |
 | NFR-5 | Schema changes | One migration per change, forward only, reviewed before deploy |
 | NFR-6 | Hosting size | Two services and one managed database |
 | NFR-7 | Browsers | Current Chrome, Firefox, Safari and Edge |
-| NFR-8 | Small screens | Usable at 375 px wide. Wide tables scroll rather than wrap |
-| NFR-9 | Errors | Correct status codes with a short message. No stack traces in production |
+| NFR-8 | Small screens | Usable at 375 px. Wide tables scroll rather than wrap |
+| NFR-9 | Errors | Correct status codes with a short message, and no stack traces in production |
 
 ---
 
-## 11. How we know it works
+## 12. Dependencies and assumptions
 
-| Measure | Target | Why this one |
+### 12.1 What this depends on
+
+| Dependency | Why it matters | What happens if it goes |
 |---|---|---|
-| Signup to first task | Under 3 minutes with no help | This is G1. If it needs explaining, the setup goal failed |
-| Still using it in week two | 60 out of 100 signups | A tracker used once is a tracker that lost to the spreadsheet |
-| Share of tasks that are late | Falling over four weeks of real use | The whole point of the dashboard is catching a slip early enough to act |
-| Task updates per person per week | At least 5 | Below that, people are tracking status somewhere else and this data is stale |
-| Admin dashboard opens per week | At least 3 | Shows whether the one big view answers a real question |
+| Render free tier | Hosts the API and the database | The free database is reclaimed after a period of inactivity. This has already happened once and took the whole install with it |
+| Vercel free tier | Hosts the frontend | The frontend goes offline. The API is unaffected |
+| Managed PostgreSQL | All data | No fallback. There is no backup schedule, which is a gap |
+| PyJWT, bcrypt, SQLAlchemy, FastAPI | Login and data access | All pinned to exact versions, so a surprise upgrade cannot break a deploy |
+
+### 12.2 Assumptions
+
+These are believed rather than proven. If one turns out false, the section it supports needs rewriting.
+
+1. Teams are three to fifteen people. The permission model and the absence of paging on projects both assume this.
+2. A team has one person willing to be the admin. The product cannot run without one.
+3. Coordination happens over hours, not seconds. This is what rules out live collaboration.
+4. Nobody except an admin needs to see a project's full board. This is OQ-1 and it is the least well supported assumption here.
+5. The free hosting tier is enough for real use. Untested. NFR-1 and NFR-2 have never been measured.
 
 ---
 
-## 12. Plan
+## 13. How we will know it works
 
-**v1.0, merged into `main`.** D0 code side, D1, D2, D3, D4, D5, D6, D7, D10, D11, D12, D13, D14, D15, D16, plus seven tests.
+Every measure below needs instrumentation that does not exist yet. That gap is itself on the v1.1 list.
 
-**Before v1.0 ships, owner action.** Create a new database and set `DATABASE_URL`. Set a fresh `SECRET_KEY`. Decide on repo visibility.
+| Measure | Target | How it would be taken | Why this one |
+|---|---|---|---|
+| Signup to first task | Under 3 minutes, unassisted | Difference between `users.created_at` and that user's first `tasks.created_at` | This is G1. If it needs explaining, the setup goal failed |
+| Still active in week two | 60 in 100 signups | Users with a task update in days 8 to 14 after signup | A tracker used once is a tracker that lost to the spreadsheet |
+| Share of tasks late | Falling across four weeks | The dashboard already computes it. Record it weekly | The point of the dashboard is catching a slip early enough to act |
+| Task updates per active person per week | At least 5 | Needs an updated timestamp on tasks, which the schema does not have | Below this, people track status somewhere else and this data is stale |
+| Admin dashboard opens per week | At least 3 | Needs request logging, which does not exist | Shows whether the wide view answers a real question |
 
-**v1.1.** The last admin guard. A plain 503 when the database is down. Finish D8 by picking one host and deleting the other config.
-
-**Backlog, not scheduled.** Short tokens with a refresh flow (7.2). Roles inside a project (7.3). Opening up what a member can see, once OQ-1 is answered. Comments on tasks. Search across titles and descriptions. CSV export.
+Two of the five cannot be measured without a schema change. Adding `updated_at` to `tasks` would also enable the concurrent edit check in section 10, so it earns its place twice.
 
 ---
 
-## 13. Open questions
+## 14. Defects
+
+The full record is in `DEFECTS.md`. Summary:
+
+| Range | Subject | State |
+|---|---|---|
+| D0 | A production settings file committed to a public repository | Closed |
+| D1 to D4 | Release blockers. Signup granted admin, the signing key had a working default, any admin could act on any project, CORS was misconfigured | Closed, with tests |
+| D5 to D7 | Stranded task assignments, a dashboard that read the whole table into memory, two things owning the schema | Closed |
+| D8 | Deploy documentation contradicts itself and describes a setup that is not in use | Partly closed |
+| D9 | Tokens in browser local storage | Accepted for v1.0 |
+| D10 to D14 | A deprecated hook, unpinned dependencies, an unguarded destructive migration, contradictory delete rules, no handling of an expired token | Closed |
+| D15, D16 | A corrupted Python version pin, and migrations that had never once run on the server | Closed |
+| D17 | The project scoping fix was applied to projects but not to tasks | Open, needs OQ-6 |
+
+D16 is the one worth reading. Migrations failed on every deploy and nobody noticed, because `create_all()` was quietly building the tables by a route that could never apply a change to an existing table. Removing it did not break migrations. It revealed that they had never worked.
+
+---
+
+## 15. Release plan
+
+### 15.1 Done
+
+Sixteen defects closed. Seven regression tests, fourteen assertions, all passing. Merged to `main` and pushed.
+
+### 15.2 Launch checklist
+
+| # | Step | Owner | Blocking |
+|---|---|---|---|
+| 1 | Create a PostgreSQL instance and set `DATABASE_URL` | Engineering | Yes. The previous one was reclaimed and nothing runs without it |
+| 2 | Set a fresh `SECRET_KEY` in the hosting environment | Engineering | Yes |
+| 3 | Set the start command to run `alembic upgrade head` before the server | Engineering | Yes. Nothing else creates the tables |
+| 4 | Confirm `/api/health` returns ok, then sign up a test user | Engineering | Yes |
+| 5 | Decide OQ-3, how the first admin is created | Both | Yes. Signup can no longer produce one |
+| 6 | Decide OQ-6, whether an unrelated admin may act on tasks | Both | Yes |
+| 7 | Set repository visibility deliberately | Engineering | No |
+
+Steps 1 to 4 are hosting setup and need no code. Steps 5 and 6 are product decisions.
+
+### 15.3 v1.1
+
+The last admin guard. A plain 503 when the database is unreachable. An `updated_at` column on tasks, which unlocks two of the five measures in section 13 and the concurrent edit check in section 10. Finish D8 by choosing one host and deleting the other config.
+
+---
+
+## 16. Open questions
 
 | ID | Question | Owner | Needed by |
 |---|---|---|---|
-| OQ-1 | Should a member see the whole project board, or only their own tasks? Section 4.3 argues both sides. One real team should decide it | Owner | Before v1.1 |
-| OQ-2 | When a member is removed, should their tasks be freed quietly, or flagged so somebody picks them up? Freeing them quietly loses the record of who was on it | Owner | v1.1 |
-| OQ-3 | Now that signup always makes a member, how is the first admin created? A seed command, a setting, or a manual database change | Owner | Before the next deploy |
-| OQ-4 | Should the free database row limit be enforced in the app, or just watched? | Owner | Before real use |
-| OQ-5 | `DEPLOYMENT_GUIDE.md` points at a different repository than the actual remote. Fix the reference before sharing this document | Owner | Before sharing |
+| OQ-1 | Should a member see the whole project board, or only their own tasks? Section 3.3 argues both sides, and assumption 4 rests on it | Both | Before v1.1 |
+| OQ-2 | When a member is removed, should their tasks be freed quietly or flagged for somebody to pick up? Freeing them quietly loses the record of who was on it | Both | v1.1 |
+| OQ-3 | How is the first admin created, now that signup always produces a member? A seed command, an environment variable, or a manual database change | Engineering | Before release |
+| OQ-4 | Should the free tier row limit be enforced in the app, or just watched? | Engineering | Before real use |
+| OQ-5 | `DEPLOYMENT_GUIDE.md` points at a different repository than the actual remote | Documentation | Before sharing |
+| OQ-6 | Is an admin a superuser for the whole install, or a lead over their own projects? The code currently says the first for tasks and the second for projects | Both | Before release |
+
+OQ-6 matters most, because section 9.3 shows every "which admin" question traces back to the same choice. Answer it once and D17 follows, along with the shape of any future role work.
 
 ---
 
-## 14. Where these claims come from
+## 17. Where these claims come from
 
-Everything in this document was checked against the code, not assumed.
+Everything here was checked against the code rather than assumed.
 
-- Tables and delete rules: `backend/app/models.py`
-- Field limits and the signup role of D1: `backend/app/schemas.py`
-- Token building and expiry: `backend/app/security.py`
-- The signing key of D2: `backend/app/config.py`
-- The permission checks of D3: `backend/app/deps.py`
-- CORS and the startup hook: `backend/app/main.py`
-- Route by route permissions: `backend/app/routers/`
-- The dashboard counts of D6: `backend/app/routers/dashboard.py`
-- Token storage of D9 and the 401 handling of D14: `frontend/src/api/client.js`
-- The migration and its downgrade: `backend/alembic/versions/0001_initial.py`
-- The committed password of D0: `git log --all -- backend/.env.production`
-- Tests: `backend/tests/test_security.py`, 14 passing
+| Claim | Source |
+|---|---|
+| Tables, indexes and delete rules | `backend/app/models.py` |
+| Field limits and signup behaviour | `backend/app/schemas.py`, `backend/app/routers/auth.py` |
+| Token construction and expiry | `backend/app/security.py` |
+| Startup refusal on a placeholder key | `backend/app/config.py` |
+| The permission matrix in section 7 | `backend/app/deps.py`, `backend/app/routers/` |
+| Dashboard counts and paging | `backend/app/routers/dashboard.py` |
+| Expired token handling | `frontend/src/api/client.js` |
+| Migration behaviour | `backend/alembic/versions/0001_initial.py`, `backend/alembic.ini` |
+| Acceptance criteria marked as tested | `backend/tests/test_security.py`, 14 passing |
