@@ -10,7 +10,7 @@
 | Documentation owner | Sugandh Sharma |
 | Engineering owner | Rohit Sharma |
 | Last updated | 18 August 2026 |
-| Code | `main`, at the security hardening merge |
+| Code | `main`, at the D17 fix |
 | Companion documents | `DEFECTS.md`, `README.md`, `DEPLOYMENT_GUIDE.md` |
 
 ### Revision history
@@ -19,8 +19,8 @@
 |---|---|
 | 0.9 | First draft. Recorded the system as built and what release would need |
 | 1.0 | Rewritten after the security work. Fifteen defects closed |
-| 1.2 | OQ-6 answered and shipped: task access reads wide and writes narrow. D17 closed, AC-11 added |
 | 1.1 | Split the defect log into `DEFECTS.md`. Added user flows, acceptance criteria, a permission matrix, dependencies and assumptions, and how each measure would actually be taken. Added OQ-6 after the matrix exposed an inconsistency |
+| 1.2 | OQ-6 answered and shipped: task access reads wide and writes narrow. D17 closed, AC-11 added |
 
 ### How to read this
 
