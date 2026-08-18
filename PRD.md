@@ -262,7 +262,7 @@ Ordered by how bad they were. D1 to D4 were release blockers. All the code items
 
 ### D0. The production database password is in a public repo. Still open
 
-`backend/.env.production` was committed in the first commit and pushed to `github.com/brahmanrohit/project-manager`, which is public. It holds a Render `DATABASE_URL` with a username and a password.
+`backend/.env.production` was committed in the first commit and pushed to the project's public GitHub repository. It holds a Render `DATABASE_URL` with a username and a password.
 
 The cause is that `.gitignore` covered `.env` and `.env.local` but not `.env.production`. So the local file stayed private and the production one went public.
 
@@ -413,11 +413,11 @@ The router only checked that a token existed, not that it still worked. So an ex
 
 | ID | Question | Owner | Needed by |
 |---|---|---|---|
-| OQ-1 | Should a member see the whole project board, or only their own tasks? Section 4.3 argues both sides. One real team should decide it | Author | Before v1.1 |
-| OQ-2 | When a member is removed, should their tasks be freed quietly, or flagged so somebody picks them up? Freeing them quietly loses the record of who was on it | Author | v1.1 |
-| OQ-3 | Now that signup always makes a member, how is the first admin created? A seed command, a setting, or a manual database change | Author | Before the next deploy |
-| OQ-4 | Should the free database row limit be enforced in the app, or just watched? | Author | Before real use |
-| OQ-5 | `DEPLOYMENT_GUIDE.md` points at a different GitHub account than the actual remote. Fix the reference before sharing this document | Author | Before sharing |
+| OQ-1 | Should a member see the whole project board, or only their own tasks? Section 4.3 argues both sides. One real team should decide it | Owner | Before v1.1 |
+| OQ-2 | When a member is removed, should their tasks be freed quietly, or flagged so somebody picks them up? Freeing them quietly loses the record of who was on it | Owner | v1.1 |
+| OQ-3 | Now that signup always makes a member, how is the first admin created? A seed command, a setting, or a manual database change | Owner | Before the next deploy |
+| OQ-4 | Should the free database row limit be enforced in the app, or just watched? | Owner | Before real use |
+| OQ-5 | `DEPLOYMENT_GUIDE.md` points at a different repository than the actual remote. Fix the reference before sharing this document | Owner | Before sharing |
 
 ---
 
