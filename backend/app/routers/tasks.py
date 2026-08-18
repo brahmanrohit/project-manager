@@ -27,6 +27,19 @@ def _ensure_project_access(db: Session, project_id: int, user: User) -> Project:
     return project
 
 
+def _ensure_assignee_is_member(db: Session, project_id: int, assigned_to: int | None) -> None:
+    """A task may only be given to someone who can actually open the project."""
+    if assigned_to is None:
+        return
+    member = (
+        db.query(ProjectMember)
+        .filter(ProjectMember.project_id == project_id, ProjectMember.user_id == assigned_to)
+        .first()
+    )
+    if not member:
+        raise HTTPException(status_code=400, detail="Assignee is not a member of this project")
+
+
 @router.get("", response_model=list[TaskOut])
 def list_tasks(project_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     _ensure_project_access(db, project_id, current_user)
@@ -46,6 +59,7 @@ def create_task(
     _ensure_project_access(db, project_id, current_user)
     if current_user.role.value != "ADMIN" and payload.assigned_to not in (None, current_user.id):
         raise HTTPException(status_code=403, detail="Members can only assign tasks to themselves")
+    _ensure_assignee_is_member(db, project_id, payload.assigned_to)
     task = Task(
         title=payload.title,
         description=payload.description,
@@ -77,6 +91,9 @@ def update_task(
         raise HTTPException(status_code=403, detail="Not authorized to update this task")
     if current_user.role.value != "ADMIN" and payload.assigned_to not in (None, current_user.id):
         raise HTTPException(status_code=403, detail="Members can only assign tasks to themselves")
+
+    if "assigned_to" in payload.model_fields_set:
+        _ensure_assignee_is_member(db, project_id, payload.assigned_to)
 
     update_data = payload.model_dump(exclude_unset=True)
     for key, value in update_data.items():

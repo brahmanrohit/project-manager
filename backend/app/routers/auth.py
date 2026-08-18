@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import User
+from app.models import User, UserRole
 from app.schemas import LoginRequest, TokenResponse, UserCreate, UserOut
 from app.security import create_access_token, hash_password, verify_password
 
@@ -19,7 +19,7 @@ def signup(payload: UserCreate, db: Session = Depends(get_db)):
         name=payload.name,
         email=payload.email,
         password_hash=hash_password(payload.password),
-        role=payload.role,
+        role=UserRole.MEMBER,
     )
     db.add(user)
     db.commit()

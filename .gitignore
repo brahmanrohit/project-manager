@@ -8,9 +8,11 @@ venv/
 node_modules/
 dist/
 
-# Env files
+# Env files. Ignore every .env variant, keep only the examples.
 .env
-.env.local
+.env.*
+!.env.example
+!*.env.example
 
 # OS/editor
 .DS_Store

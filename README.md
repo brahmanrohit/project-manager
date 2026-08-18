@@ -128,7 +128,7 @@ uvicorn app.main:app --reload --port 8000
 
 API docs: [http://localhost:8000/docs](http://localhost:8000/docs)
 
-> Note: `Base.metadata.create_all()` runs on startup so tables auto-create if migrations were not run.
+> Note: tables are created by Alembic only. Run `alembic upgrade head` before starting the API.
 
 ### 3) Frontend Setup
 
@@ -187,7 +187,7 @@ railway up
 
 ## Production Notes
 
-- Replace default `SECRET_KEY` with a strong random secret.
+- `SECRET_KEY` is required. There is no default and the app refuses to start without one.
 - Keep `.env` out of source control.
 - Use Alembic migrations for schema evolution in production.
 - Configure CORS via `FRONTEND_URL`.

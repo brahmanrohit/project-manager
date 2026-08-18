@@ -29,7 +29,9 @@ class User(Base):
 
     owned_projects = relationship("Project", back_populates="owner", cascade="all, delete")
     memberships = relationship("ProjectMember", back_populates="user", cascade="all, delete-orphan")
-    assigned_tasks = relationship("Task", back_populates="assignee", cascade="all, delete")
+    # No delete cascade here. The column is ON DELETE SET NULL, so a leaving
+    # user must not take the team's task history with them.
+    assigned_tasks = relationship("Task", back_populates="assignee")
 
 
 class Project(Base):

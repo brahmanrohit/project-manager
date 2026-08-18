@@ -13,3 +13,19 @@ api.interceptors.request.use((config) => {
   }
   return config;
 });
+
+// A token that has run out used to leave the page half broken, because the
+// stored token still looked fine to the router. Clear it and send them to login.
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      if (!window.location.pathname.startsWith("/login")) {
+        window.location.replace("/login");
+      }
+    }
+    return Promise.reject(error);
+  }
+);

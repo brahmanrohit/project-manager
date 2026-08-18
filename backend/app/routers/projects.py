@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.deps import get_current_user, require_admin
-from app.models import Project, ProjectMember, User
+from app.deps import get_current_user, require_admin, require_project_admin
+from app.models import Project, ProjectMember, Task, User
 from app.schemas import ProjectCreate, ProjectMemberChange, ProjectOut, ProjectUpdate
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -40,9 +40,7 @@ def update_project(
     db: Session = Depends(get_db),
     admin_user: User = Depends(require_admin),
 ):
-    project = db.query(Project).filter(Project.id == project_id).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = require_project_admin(project_id, db, admin_user, owner_only=True)
 
     if payload.name is not None:
         project.name = payload.name
@@ -56,9 +54,7 @@ def update_project(
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_project(project_id: int, db: Session = Depends(get_db), admin_user: User = Depends(require_admin)):
-    project = db.query(Project).filter(Project.id == project_id).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = require_project_admin(project_id, db, admin_user, owner_only=True)
     db.delete(project)
     db.commit()
 
@@ -70,9 +66,7 @@ def add_project_member(
     db: Session = Depends(get_db),
     admin_user: User = Depends(require_admin),
 ):
-    project = db.query(Project).filter(Project.id == project_id).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    require_project_admin(project_id, db, admin_user)
 
     user = db.query(User).filter(User.id == payload.user_id).first()
     if not user:
@@ -98,6 +92,8 @@ def remove_project_member(
     db: Session = Depends(get_db),
     admin_user: User = Depends(require_admin),
 ):
+    require_project_admin(project_id, db, admin_user)
+
     membership = (
         db.query(ProjectMember)
         .filter(ProjectMember.project_id == project_id, ProjectMember.user_id == user_id)
@@ -105,5 +101,11 @@ def remove_project_member(
     )
     if not membership:
         raise HTTPException(status_code=404, detail="Membership not found")
+
+    # Hand their tasks back to the project instead of leaving them pointed at
+    # someone who can no longer open the project.
+    db.query(Task).filter(Task.project_id == project_id, Task.assigned_to == user_id).update(
+        {Task.assigned_to: None}, synchronize_session=False
+    )
     db.delete(membership)
     db.commit()

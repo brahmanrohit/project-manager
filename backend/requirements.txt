@@ -1,10 +1,16 @@
-fastapi>=0.115.0
-uvicorn[standard]>=0.30.0
-sqlalchemy>=2.0.36
-psycopg2-binary>=2.9.9
-python-jose[cryptography]>=3.3.0
-bcrypt>=4.2.0
-python-multipart>=0.0.9
-pydantic-settings>=2.1.0
-email-validator>=2.1.0
-alembic>=1.13.3
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+sqlalchemy==2.0.36
+psycopg2-binary==2.9.10
+# pyjwt replaces python-jose, which is unmaintained and carries known
+# algorithm-confusion and JWT-bomb advisories.
+pyjwt==2.10.1
+bcrypt==4.2.1
+python-multipart==0.0.20
+pydantic-settings==2.7.0
+email-validator==2.2.0
+alembic==1.14.0
+
+# tests
+pytest==8.3.4
+httpx==0.28.1

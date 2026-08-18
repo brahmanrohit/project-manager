@@ -5,6 +5,8 @@ Revises:
 Create Date: 2026-04-30 21:00:00
 """
 
+import os
+
 from alembic import op
 
 revision = "0001_initial"
@@ -88,6 +90,14 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # This drops every table and all the data with them. It exists so the
+    # migration is reversible in development, not so it can be run by accident.
+    # Set ALLOW_DESTRUCTIVE_DOWNGRADE=1 if you really mean it.
+    if os.getenv("ALLOW_DESTRUCTIVE_DOWNGRADE") != "1":
+        raise RuntimeError(
+            "Refusing to drop all tables. Set ALLOW_DESTRUCTIVE_DOWNGRADE=1 to confirm."
+        )
+
     op.execute("DROP TABLE IF EXISTS tasks")
     op.execute("DROP TABLE IF EXISTS project_members")
     op.execute("DROP TABLE IF EXISTS projects")

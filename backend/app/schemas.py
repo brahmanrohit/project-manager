@@ -12,10 +12,11 @@ class TokenResponse(BaseModel):
 
 
 class UserCreate(BaseModel):
+    # No role field on purpose. Signup always creates a MEMBER.
+    # Letting the caller pick a role made /auth/signup an open door to admin.
     name: str = Field(min_length=2, max_length=120)
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
-    role: UserRole = UserRole.MEMBER
 
 
 class LoginRequest(BaseModel):
