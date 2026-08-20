@@ -1,6 +1,7 @@
-"""Regression tests for the four holes fixed on this branch.
+"""Regression tests for the defects found reviewing this codebase.
 
-Each test fails on the code as it was before.
+Ten tests, sixteen cases. Each one fails on the code as it stood before the
+fix it covers, which is the only reason any of them are worth keeping.
 """
 
 from datetime import datetime, timedelta, timezone
